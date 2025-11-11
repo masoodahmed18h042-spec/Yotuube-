@@ -1,0 +1,178 @@
+<!--
+YOUTUBE DOWNLOADER - GitHub Pages ready
+File: index.html
+
+INSTRUCTIONS:
+1) Create a new GitHub repo (public or private). Commit this file as `index.html` to the repo root.
+2) In the repo settings -> Pages, set branch to `main` (or `gh-pages`) and folder `/ (root)` to serve.
+3) Optional: edit API_ENDPOINT below to your backend (for example: https://api.example.com/convert). If you don't have a backend, the page will run in DEMO (mock) mode showing fake qualities so you can test UI.
+4) CORS: If using a backend, make sure it allows requests from your GitHub Pages origin (https://<your-username>.github.io).
+5) NOTE: This frontend expects your backend to accept POST JSON { videoUrl, format } and return JSON { title, thumbnail, length, formats: [ { itag, ext, resolution, filesize, url } ] }.
+6) Legal: Do not use this to download content you don't have rights to. Respect copyright and YouTube ToS.
+
+---
+
+If you want, I can also provide a small `README.md` and a sample `server/` backend in a follow-up. This file is meant to be a single-file static site for GitHub Pages.
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTube Downloader (Demo)</title>
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+  <style>
+    :root{--bg:#0f1724;--card:#ffffff;--muted:#6b7280;--accent:#111827}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#0b1220 0%, #0f1724 100%);font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    .wrap{max-width:880px;margin:34px auto;padding:18px}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,0.5)}
+    h1{margin:0 0 6px 0;font-size:20px}
+    p.lead{margin:0;color:var(--muted);font-size:14px}
+    label{font-size:13px;color:#333}
+    input[type='text']{width:100%;padding:12px;border-radius:8px;border:1px solid #e6e6e9;font-size:15px;margin-top:8px}
+    .controls{display:flex;gap:10px;align-items:center;margin-top:12px}
+    .controls .radios{display:flex;gap:10px;align-items:center}
+    button.primary{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer}
+    .status{margin-top:10px;font-size:13px;color:#374151}
+    .qualities{margin-top:14px}
+    .quality{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:8px;border:1px solid #f1f5f9;margin-bottom:8px}
+    .quality .meta{font-size:14px}
+    .quality .meta .sub{font-size:12px;color:var(--muted)}
+    .download-link{background:#0ea5e9;color:white;padding:8px 10px;border-radius:6px;text-decoration:none}
+    .thumb{width:140px;height:78px;object-fit:cover;border-radius:8px}
+    .header-row{display:flex;gap:12px;align-items:center}
+    .spinner{width:16px;height:16px;border:3px solid #e6e6e9;border-top-color:#111;border-radius:50%;animation:spin 1s linear infinite;display:inline-block}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .note{font-size:12px;color:#7c8795;margin-top:8px}
+    footer{margin-top:12px;font-size:12px;color:#94a3b8}
+    @media(max-width:640px){.header-row{flex-direction:column;align-items:flex-start}.thumb{width:100%;height:160px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>YouTube Downloader (GitHub Pages)</h1>
+      <p class="lead">Paste a YouTube link, choose MP3 or MP4, convert and then pick a quality to download. (Demo mode available.)</p>
+
+      <div style="margin-top:14px">
+        <label for="url">YouTube URL</label>
+        <input id="url" type="text" placeholder="https://www.youtube.com/watch?v=..." />
+      </div>
+
+      <div class="controls">
+        <div class="radios">
+          <label><input type="radio" name="format" value="mp4" checked /> MP4</label>
+          <label><input type="radio" name="format" value="mp3" /> MP3</label>
+        </div>
+        <div style="flex:1"></div>
+        <button id="convert" class="primary">Convert</button>
+      </div>
+
+      <div id="status" class="status"></div>
+
+      <div id="result" class="qualities"></div>
+
+      <div class="note">Tip: If you don't configure a backend, this page runs in DEMO mode showing mocked qualities so you can test the UI. To enable real downloads, point the API_ENDPOINT to your server that provides format URLs.</div>
+      <footer>Made for hosting on GitHub Pages. Respect copyright.</footer>
+    </div>
+  </div>
+
+<script>
+// === CONFIGURE THIS: set your backend URL here. Leave empty for DEMO mode. ===
+const API_ENDPOINT = '';
+
+const el = id => document.getElementById(id);
+const urlInput = el('url');
+const convertBtn = el('convert');
+const statusEl = el('status');
+const resultEl = el('result');
+
+function setStatus(txt, isError){ statusEl.textContent = txt || ''; statusEl.style.color = isError ? '#b91c1c' : '#374151'; }
+
+function clearResult(){ resultEl.innerHTML = ''; }
+
+function formatBytes(size){ if(!size) return ''; const n = parseFloat(size); if(isNaN(n)) return size; if(n < 1024) return n+' B'; if(n < 1024*1024) return (n/1024).toFixed(2)+' KB'; return (n/1024/1024).toFixed(2)+' MB'; }
+
+function mockResponse(){ return {
+  title: 'Demo: Funny Cat Video',
+  thumbnail: 'https://placekitten.com/320/180',
+  length: '2:34',
+  formats: [
+    { itag:'137', ext:'mp4', resolution:'1080p', filesize: (45*1024*1024), url:'#' },
+    { itag:'22', ext:'mp4', resolution:'720p', filesize: (18*1024*1024), url:'#' },
+    { itag:'18', ext:'mp4', resolution:'360p', filesize: (6*1024*1024), url:'#' },
+    { itag:'251', ext:'webm', resolution:'audio', filesize: (3*1024*1024), url:'#' }
+  ]
+}; }
+
+async function onConvert(){
+  clearResult();
+  setStatus('');
+  const videoUrl = urlInput.value.trim();
+  if(!videoUrl){ setStatus('Please enter a YouTube URL.', true); return; }
+  const format = document.querySelector('input[name="format"]:checked').value;
+
+  convertBtn.disabled = true;
+  convertBtn.textContent = 'Converting...';
+
+  try{
+    let data;
+    if(!API_ENDPOINT){
+      // DEMO mode
+      setStatus('Running in DEMO mode — no backend configured.');
+      await new Promise(r=>setTimeout(r,700));
+      data = mockResponse();
+    } else {
+      setStatus('Contacting backend service...');
+      const resp = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl, format })
+      });
+      if(!resp.ok) throw new Error('Service error: ' + resp.status);
+      data = await resp.json();
+    }
+
+    // render
+    const header = document.createElement('div');
+    header.className = 'header-row';
+    const img = document.createElement('img'); img.src = data.thumbnail || ''; img.className = 'thumb';
+    const meta = document.createElement('div');
+    meta.innerHTML = '<div style="font-weight:700">'+(data.title||'Untitled')+'</div><div style="color:#6b7280">'+(data.length||'')+'</div>';
+    header.appendChild(img); header.appendChild(meta);
+    resultEl.appendChild(header);
+
+    (data.formats||[]).forEach(f => {
+      const block = document.createElement('div'); block.className = 'quality';
+      const left = document.createElement('div'); left.className = 'meta';
+      left.innerHTML = '<div>'+ (f.resolution || f.ext || 'Unknown') + '</div><div class="sub">'+ (f.ext ? f.ext.toUpperCase() : '') + ' • ' + (f.filesize ? formatBytes(f.filesize) : '') +'</div>';
+      const right = document.createElement('div');
+      const a = document.createElement('a');
+      a.className = 'download-link';
+      a.textContent = 'Download';
+      // If API_ENDPOINT empty, urls are '#'. Otherwise, use f.url
+      a.href = f.url || '#';
+      a.target = '_blank';
+      right.appendChild(a);
+      block.appendChild(left); block.appendChild(right);
+      resultEl.appendChild(block);
+    });
+
+    setStatus('Choose a quality and click Download.');
+  }catch(err){
+    console.error(err);
+    setStatus('Error: '+(err.message||err), true);
+  } finally {
+    convertBtn.disabled = false;
+    convertBtn.textContent = 'Convert';
+  }
+}
+
+convertBtn.addEventListener('click', onConvert);
+
+// allow pressing Enter
+urlInput.addEventListener('keyup', (e)=>{ if(e.key === 'Enter') onConvert(); });
+</script>
+</body>
+</html>
